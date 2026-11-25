@@ -1,0 +1,1119 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>동학년 수업 조정</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root {
+    --bg: #f5f7fb; --card: #fff; --line: #e3e8f0; --text: #1f2937; --muted: #6b7280;
+    --primary: #2f6fed; --primary-soft: #e8f0ff;
+    --changed: #eaf1ff; --changed-line: #9bb8f5;
+    --ext: #e7f8ee; --ext-line: #6cc58f; --ext-text: #11713d;
+    --holiday: #fdeeee; --holiday-text: #c43c40;
+    --cleared: #f3f4f6;
+    --danger: #e5484d; --ok: #18a058; --warn: #f59e0b;
+    --radius: 14px;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text); font-size: 16px; line-height: 1.5;
+    font-family: "Pretendard", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+  }
+  header {
+    background: var(--card); border-bottom: 1px solid var(--line);
+    padding: 14px 20px; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+  }
+  header h1 { margin: 0; font-size: 1.3rem; }
+  .live { font-size: .85rem; color: var(--muted); display: flex; align-items: center; gap: 6px; }
+  .live::before { content: ""; width: 9px; height: 9px; border-radius: 50%; background: #c5cbd5; }
+  .live.on { color: var(--ok); }
+  .live.on::before { background: var(--ok); }
+
+  nav.tabs {
+    position: sticky; top: 0; z-index: 20; background: var(--card); border-bottom: 1px solid var(--line);
+    display: flex; gap: 4px; padding: 0 12px; overflow-x: auto;
+  }
+  nav.tabs button {
+    background: none; border-radius: 0; border-bottom: 3px solid transparent;
+    padding: 12px 14px; color: var(--muted); white-space: nowrap;
+  }
+  nav.tabs button.active { color: var(--primary); border-bottom-color: var(--primary); }
+
+  main { max-width: 1200px; margin: 0 auto; padding: 18px; }
+  .tab { display: none; }
+  .tab.active { display: block; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 20px; margin-bottom: 18px; min-width: 0; }
+  .card h2 { margin: 0 0 14px; font-size: 1.1rem; }
+  .card h3 { margin: 18px 0 8px; font-size: 1rem; }
+
+  label { display: block; font-size: .9rem; font-weight: 600; margin: 12px 0 4px; }
+  input, select, textarea {
+    width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px;
+    font: inherit; background: #fff; color: var(--text);
+  }
+  input:focus, select:focus, textarea:focus { outline: 2px solid var(--primary-soft); border-color: var(--primary); }
+  input[type=checkbox], input[type=radio] { width: auto; margin: 0; accent-color: var(--primary); }
+  textarea { resize: vertical; min-height: 60px; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .grid4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+
+  button { font: inherit; border: none; border-radius: 10px; padding: 9px 15px; cursor: pointer; font-weight: 600; }
+  button:disabled { opacity: .55; cursor: default; }
+  .btn-primary { background: var(--primary); color: #fff; }
+  .btn-ghost { background: var(--primary-soft); color: var(--primary); }
+  .btn-gray { background: #eef1f5; color: var(--text); }
+  .btn-danger { background: #fdecec; color: var(--danger); }
+  .btn-danger-solid { background: var(--danger); color: #fff; }
+  .btn-ok { background: var(--ext); color: var(--ext-text); }
+  .btn-wide { width: 100%; padding: 12px; margin-top: 18px; }
+
+  .toolbar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+  .seg { display: inline-flex; background: #eef1f5; border-radius: 12px; padding: 4px; gap: 2px; }
+  .seg button { background: none; padding: 7px 12px; color: var(--muted); }
+  .seg button.active { background: #fff; color: var(--primary); box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+  .week-nav { display: flex; align-items: center; gap: 6px; }
+  .week-label { font-weight: 700; min-width: 140px; text-align: center; }
+  .ctx select { width: auto; min-width: 130px; }
+  .day-btns { display: flex; gap: 6px; flex-wrap: wrap; }
+  .day-btns button { background: #eef1f5; color: var(--text); padding: 7px 12px; }
+  .day-btns button.active { background: var(--primary); color: #fff; }
+  .day-btns button.hol { color: var(--holiday-text); }
+  .day-btns button.hol.active { background: var(--holiday-text); color: #fff; }
+
+  .legend { display: flex; flex-wrap: wrap; gap: 12px; font-size: .82rem; color: var(--muted); margin: 4px 0 12px; }
+  .legend span::before { content: ""; display: inline-block; width: 12px; height: 12px; border-radius: 3px; margin-right: 5px; vertical-align: -1px; border: 1px solid var(--line); }
+  .lg-changed::before { background: var(--changed) !important; border-color: var(--changed-line) !important; }
+  .lg-ext::before { background: var(--ext) !important; border-color: var(--ext-line) !important; }
+  .lg-cleared::before { background: var(--cleared) !important; }
+  .lg-hol::before { background: var(--holiday) !important; }
+
+  .swap-banner {
+    display: none; background: #fff7e6; border: 1px solid #f5c26b; border-radius: 12px;
+    padding: 10px 14px; margin-bottom: 12px; align-items: center; justify-content: space-between; gap: 10px;
+  }
+  .swap-banner.show { display: flex; }
+
+  .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  table.tt { width: 100%; border-collapse: collapse; table-layout: fixed; min-width: 560px; }
+  table.tt th, table.tt td { border: 1px solid var(--line); text-align: center; padding: 4px; vertical-align: middle; }
+  table.tt th { background: #f9fafc; font-size: .88rem; padding: 8px 4px; }
+  table.tt th.pcol { width: 58px; }
+  table.tt th.today { background: var(--primary-soft); color: var(--primary); }
+  table.tt th.hol { background: var(--holiday); color: var(--holiday-text); }
+  .hname { display: block; font-size: .75rem; font-weight: 500; }
+  table.tt td { height: 66px; font-size: .9rem; }
+  td.click { cursor: pointer; }
+  td.click:hover { box-shadow: inset 0 0 0 2px var(--primary-soft); }
+  td.na { background: repeating-linear-gradient(45deg, #f7f8fa, #f7f8fa 6px, #eef0f4 6px, #eef0f4 12px); }
+  td.hol { background: var(--holiday); }
+  td.changed { background: var(--changed); }
+  td.cleared { background: var(--cleared); color: var(--muted); }
+  td.ext { background: var(--ext); color: var(--ext-text); }
+  td.swap-src { outline: 3px solid var(--warn); outline-offset: -3px; }
+  td.conflict { box-shadow: inset 0 0 0 2px var(--danger); }
+  .s-main { font-weight: 700; line-height: 1.25; word-break: keep-all; overflow-wrap: anywhere; }
+  .s-room { font-size: .75rem; color: var(--muted); }
+  td.ext .s-room { color: var(--ext-text); }
+  .s-orig { font-size: .72rem; color: var(--muted); text-decoration: line-through; }
+  .chip { display: inline-block; font-size: .78rem; background: var(--primary-soft); color: var(--primary); border-radius: 8px; padding: 1px 6px; margin: 1px; }
+  .chip.ext { background: var(--ext); color: var(--ext-text); }
+
+  /* 외부 수업 */
+  .checks { display: flex; flex-wrap: wrap; gap: 8px; }
+  .checks label {
+    display: inline-flex; align-items: center; gap: 6px; margin: 0; font-weight: 500;
+    border: 1px solid var(--line); border-radius: 10px; padding: 7px 11px; cursor: pointer; background: #fff;
+  }
+  .checks label.disabled { opacity: .4; cursor: default; }
+  .radios { display: flex; flex-wrap: wrap; gap: 16px; align-items: center; margin-top: 4px; }
+  .radios label { display: inline-flex; align-items: center; gap: 6px; margin: 0; font-weight: 500; }
+  .weeks-input { width: 80px; display: inline-block; padding: 6px 8px; }
+  .preview { margin-top: 14px; background: #f9fafc; border: 1px dashed var(--line); border-radius: 12px; padding: 12px 14px; font-size: .9rem; }
+  .preview .warn { color: var(--danger); }
+  .series { border-top: 1px solid var(--line); padding: 14px 2px; display: flex; gap: 12px; justify-content: space-between; align-items: flex-start; }
+  .series-title { font-weight: 700; }
+  .series-sub { color: var(--muted); font-size: .88rem; overflow-wrap: anywhere; }
+  .dates { margin-top: 4px; }
+  .empty { color: var(--muted); text-align: center; padding: 22px 0; }
+
+  /* 설정 */
+  table.edit-grid td { height: auto; padding: 5px; }
+  table.edit-grid input, table.edit-grid select { padding: 6px 7px; font-size: .86rem; border-radius: 8px; }
+  table.edit-grid select { margin-top: 4px; color: var(--muted); }
+  .hol-list { max-height: 360px; overflow-y: auto; margin-top: 10px; }
+  .hol-item { display: flex; justify-content: space-between; align-items: center; padding: 8px 2px; border-top: 1px solid var(--line); font-size: .92rem; }
+  .hol-item .school { color: var(--primary); font-size: .8rem; margin-left: 6px; }
+  .hint { color: var(--muted); font-size: .85rem; margin: 6px 0 0; }
+  .add-row { display: grid; grid-template-columns: 1fr 1.4fr auto; gap: 8px; align-items: end; }
+
+  /* 창 · 알림 */
+  .modal-bg { position: fixed; inset: 0; background: rgba(15,23,42,.45); display: none; align-items: center; justify-content: center; padding: 16px; z-index: 40; }
+  .modal-bg.show { display: flex; }
+  .modal { background: #fff; border-radius: var(--radius); padding: 22px; width: 100%; max-width: 420px; max-height: 90vh; overflow-y: auto; }
+  .modal h3 { margin: 0 0 6px; }
+  .modal .mtext { color: var(--muted); white-space: pre-line; margin: 6px 0 0; }
+  .modal .info { background: #f9fafc; border-radius: 10px; padding: 10px 12px; font-size: .9rem; margin-top: 8px; overflow-wrap: anywhere; }
+  .modal-actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; margin-top: 18px; }
+  .modal-actions.stack { flex-direction: column; }
+  .modal-actions.stack button { width: 100%; }
+  .toast {
+    position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%) translateY(20px);
+    background: #1f2937; color: #fff; padding: 12px 20px; border-radius: 12px; opacity: 0; pointer-events: none;
+    transition: all .25s; z-index: 60; max-width: calc(100% - 32px); text-align: center;
+  }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  .toast.error { background: var(--danger); }
+  .toast.ok { background: var(--ok); }
+  .setup-warning { background: #fff4e0; border: 1px solid #f5c26b; border-radius: var(--radius); padding: 14px 18px; margin-bottom: 16px; display: none; }
+
+  @media (max-width: 760px) {
+    main { padding: 12px; }
+    .card { padding: 16px; }
+    .grid4 { grid-template-columns: 1fr 1fr; }
+    .toolbar { flex-direction: column; align-items: stretch; }
+    .week-nav { justify-content: space-between; }
+    .ctx select { width: 100%; }
+    .add-row { grid-template-columns: 1fr 1fr; }
+    .add-row button { grid-column: 1 / -1; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1 id="appTitle">📚 동학년 수업 조정</h1>
+  <span class="live" id="live">연결 중…</span>
+</header>
+
+<nav class="tabs">
+  <button data-tab="timetable" class="active">📅 주간 시간표</button>
+  <button data-tab="external">🚌 외부 수업</button>
+  <button data-tab="settings">⚙️ 설정</button>
+</nav>
+
+<main>
+  <div class="setup-warning" id="setupWarning"></div>
+
+  <!-- ================= 주간 시간표 ================= -->
+  <section class="tab active" id="tab-timetable">
+    <div class="card">
+      <div class="toolbar">
+        <div class="seg" id="viewSeg">
+          <button data-view="class" class="active">반별</button>
+          <button data-view="day">하루 전체 반</button>
+          <button data-view="room">특별실</button>
+        </div>
+        <div class="week-nav">
+          <button class="btn-gray" id="prevWeek" aria-label="이전 주">◀</button>
+          <span class="week-label" id="weekLabel"></span>
+          <button class="btn-gray" id="nextWeek" aria-label="다음 주">▶</button>
+          <button class="btn-ghost" id="thisWeek">이번 주</button>
+        </div>
+      </div>
+
+      <div class="toolbar ctx">
+        <select id="classSel" aria-label="반 선택"></select>
+        <div class="day-btns" id="dayBtns"></div>
+        <select id="roomSel" aria-label="특별실 선택"></select>
+      </div>
+
+      <div class="swap-banner" id="swapBanner">
+        <span id="swapText"></span>
+        <button class="btn-gray" id="swapCancel">취소</button>
+      </div>
+
+      <div class="legend">
+        <span>매주 시간표</span>
+        <span class="lg-changed">이번 주 변경</span>
+        <span class="lg-cleared">교과 비움</span>
+        <span class="lg-ext">외부 수업</span>
+        <span class="lg-hol">공휴일·휴업일</span>
+      </div>
+
+      <div class="table-wrap"><table class="tt" id="tt"></table></div>
+      <p class="hint" id="ttHint">칸을 누르면 이번 주만 교과를 바꾸거나, 비우거나, 순서를 바꾸거나, 외부 수업을 넣을 수 있어요.</p>
+    </div>
+  </section>
+
+  <!-- ================= 외부 수업 ================= -->
+  <section class="tab" id="tab-external">
+    <div class="card">
+      <h2>🚌 외부 수업 등록</h2>
+      <form id="extForm" autocomplete="off">
+        <label for="eTitle">수업 이름</label>
+        <input id="eTitle" maxlength="40" placeholder="예: 생존수영, 현장체험학습, 찾아오는 과학교실" required>
+
+        <label>반</label>
+        <div class="checks" id="eClasses"></div>
+
+        <div class="grid2">
+          <div>
+            <label for="eDate">날짜 (반복이면 첫날)</label>
+            <input type="date" id="eDate" required>
+          </div>
+          <div>
+            <label>반복</label>
+            <div class="radios">
+              <label><input type="radio" name="eRepeat" value="once" checked> 한 번만</label>
+              <label><input type="radio" name="eRepeat" value="weekly"> 매주
+                <input type="number" id="eWeeks" class="weeks-input" min="2" max="40" value="4"> 주 동안</label>
+            </div>
+          </div>
+        </div>
+
+        <label>교시</label>
+        <div class="checks" id="ePeriods"></div>
+
+        <div class="grid2">
+          <div>
+            <label for="ePlace">수업 장소</label>
+            <input id="ePlace" list="roomList" maxlength="40" placeholder="예: OO수영장, 체육관">
+          </div>
+          <div>
+            <label for="eNote">비고</label>
+            <input id="eNote" maxlength="100" placeholder="예: 수영복 지참, 버스 9:00 출발">
+          </div>
+        </div>
+
+        <div class="radios" style="margin-top:12px">
+          <label><input type="checkbox" id="eSkipHol" checked> 공휴일·휴업일은 건너뛰기</label>
+        </div>
+
+        <div class="preview" id="ePreview"></div>
+        <button type="submit" class="btn-primary btn-wide" id="eSubmit">외부 수업 등록</button>
+      </form>
+    </div>
+
+    <div class="card">
+      <h2>📋 예정된 외부 수업</h2>
+      <div id="seriesList"></div>
+    </div>
+  </section>
+
+  <!-- ================= 설정 ================= -->
+  <section class="tab" id="tab-settings">
+    <div class="card">
+      <h2>⚙️ 기본 설정</h2>
+      <div class="grid4">
+        <div><label for="sGrade">학년</label><select id="sGrade"></select></div>
+        <div><label for="sClassCount">반 수</label><input type="number" id="sClassCount" min="1" max="20"></div>
+        <div><label for="sStart">시작 주</label><input type="date" id="sStart"></div>
+        <div><label for="sEnd">마지막 주</label><input type="date" id="sEnd"></div>
+      </div>
+      <p class="hint">시작 주·마지막 주는 그 주의 아무 날이나 고르면 돼요. 그 주 월요일부터 마지막 주 금요일까지 매주 시간표가 반복됩니다.</p>
+      <label for="sRooms">특별실 목록 (쉼표로 구분)</label>
+      <input id="sRooms" placeholder="과학실, 음악실, 컴퓨터실">
+      <button class="btn-primary btn-wide" id="saveSettings">기본 설정 저장</button>
+    </div>
+
+    <div class="card">
+      <h2>🗓️ 매주 반복 시간표 (교과 · 특별실)</h2>
+      <div class="toolbar ctx">
+        <select id="bClass" aria-label="편집할 반"></select>
+        <span class="hint" style="margin:0">교과를 지우고 저장하면 그 칸이 비워집니다.</span>
+      </div>
+      <div class="table-wrap"><table class="tt edit-grid" id="baseGrid"></table></div>
+      <button class="btn-primary btn-wide" id="saveBase">이 반 시간표 저장</button>
+    </div>
+
+    <div class="card">
+      <h2>🎌 공휴일 · 휴업일</h2>
+      <p class="hint" style="margin-top:0">2026·2027년 공휴일은 미리 들어 있어요. 학교 재량휴업일이나 새 임시공휴일은 여기서 추가하세요.</p>
+      <div class="add-row">
+        <div><label for="hDate">날짜</label><input type="date" id="hDate"></div>
+        <div><label for="hName">이름</label><input id="hName" maxlength="30" placeholder="예: 재량휴업일"></div>
+        <button class="btn-ghost" id="addHoliday">추가</button>
+      </div>
+      <div class="hol-list" id="holList"></div>
+    </div>
+  </section>
+</main>
+
+<datalist id="subjectList"></datalist>
+<datalist id="roomList"></datalist>
+
+<div class="modal-bg" id="modalBg">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="mTitle">
+    <h3 id="mTitle"></h3>
+    <div id="mBody"></div>
+    <div class="modal-actions" id="mActions"></div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+  // ▼▼▼ 여기에 Supabase 프로젝트 값을 붙여 넣으세요 ▼▼▼
+  const SUPABASE_URL = "https://vvwgueztsrthtnkmbuyn.supabase.co";   // 예: https://abcdefgh.supabase.co
+  const SUPABASE_KEY = "sb_publishable_-yIj7yV2HhbH8YX0LpVkLg_HjFtdI6v";   // publishable key (sb_publishable_... 또는 anon 키)
+  // ▲▲▲ 여기까지 ▲▲▲
+
+  const DAY_NAMES = ["월", "화", "수", "목", "금"];
+  const maxPeriod = (wd) => (wd === 4 ? 6 : 5);          // 목요일만 6교시
+  const BASIC_SUBJECTS = ["국어", "수학", "사회", "과학", "영어", "음악", "미술", "체육", "도덕", "실과",
+    "바른생활", "슬기로운생활", "즐거운생활", "창체", "자율", "동아리", "봉사", "진로"];
+
+  const $ = (id) => document.getElementById(id);
+  const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+  let db = null;
+  let settings = null;
+  let baseMap = {}, changeMap = {}, extMap = {};
+  let holidays = {}, holidayList = [], baseRows = [];
+  let weekStart = null;
+  let view = "class", selClass = 1, selDay = 1, selRoom = "";
+  let swapFrom = null;
+
+  // ---------------- 날짜 도우미 (한국 시간 그대로 사용) ----------------
+  function fmt(d) {
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  }
+  function parseDate(s) { const [y, m, d] = s.split("-").map(Number); return new Date(y, m - 1, d); }
+  function addDays(d, n) { const x = new Date(d); x.setDate(x.getDate() + n); return x; }
+  function isoDow(d) { return d.getDay() === 0 ? 7 : d.getDay(); }   // 1=월 … 7=일
+  function mondayOf(d) { const x = new Date(d.getFullYear(), d.getMonth(), d.getDate()); return addDays(x, 1 - isoDow(x)); }
+  function todayStr() { return fmt(new Date()); }
+  function md(s) { const d = parseDate(s); return `${d.getMonth() + 1}/${d.getDate()}`; }
+  function pretty(s) {
+    const d = parseDate(s);
+    return `${d.getMonth() + 1}월 ${d.getDate()}일(${"일월화수목금토"[d.getDay()]})`;
+  }
+  function uuid() {
+    if (window.crypto && crypto.randomUUID) { try { return crypto.randomUUID(); } catch (e) { /* 아래 방식 사용 */ } }
+    return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+      const r = (Math.random() * 16) | 0;
+      return (c === "x" ? r : (r & 0x3) | 0x8).toString(16);
+    });
+  }
+
+  // ---------------- 알림 · 창 ----------------
+  let toastTimer = null;
+  function toast(msg, type = "") {
+    const t = $("toast");
+    t.textContent = msg;
+    t.className = "toast show " + type;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => (t.className = "toast " + type), 3200);
+  }
+  function openModal(title, bodyHtml, actions, stack = false) {
+    $("mTitle").textContent = title;
+    $("mBody").innerHTML = bodyHtml;
+    const box = $("mActions");
+    box.className = "modal-actions" + (stack ? " stack" : "");
+    box.innerHTML = "";
+    actions.forEach((a) => {
+      const b = document.createElement("button");
+      b.className = a.cls || "btn-gray";
+      b.textContent = a.label;
+      b.addEventListener("click", a.onClick || closeModal);
+      box.appendChild(b);
+    });
+    $("modalBg").classList.add("show");
+  }
+  function closeModal() { $("modalBg").classList.remove("show"); }
+  function confirmBox(title, text, okLabel, onOk) {
+    openModal(title, `<p class="mtext">${esc(text)}</p>`, [
+      { label: "아니요" },
+      { label: okLabel, cls: "btn-danger-solid", onClick: async () => { closeModal(); await run(onOk); } },
+    ]);
+  }
+  async function run(fn) {
+    try { await fn(); }
+    catch (e) { console.error(e); toast("오류: " + (e.message || e), "error"); }
+  }
+
+  // ---------------- 데이터 불러오기 ----------------
+  function rooms() { return (settings && settings.rooms) || []; }
+  function classCount() { return (settings && settings.class_count) || 1; }
+  function termRange() {
+    if (!settings) return null;
+    return {
+      from: fmt(mondayOf(parseDate(settings.term_start))),
+      to: fmt(addDays(mondayOf(parseDate(settings.term_end)), 4)),
+    };
+  }
+
+  async function loadStatic() {
+    const [s, b, h] = await Promise.all([
+      db.from("app_settings").select("*").eq("id", 1).maybeSingle(),
+      db.from("base_timetable").select("*"),
+      db.from("holidays").select("*").order("holiday_date"),
+    ]);
+    for (const r of [s, b, h]) if (r.error) throw r.error;
+    settings = s.data;
+    baseRows = b.data;
+    baseMap = {};
+    baseRows.forEach((r) => (baseMap[`${r.class_no}_${r.weekday}_${r.period}`] = r));
+    holidayList = h.data;
+    holidays = {};
+    holidayList.forEach((r) => (holidays[r.holiday_date] = r));
+  }
+
+  async function loadWeek() {
+    const from = fmt(weekStart), to = fmt(addDays(weekStart, 4));
+    const [c, e] = await Promise.all([
+      db.from("slot_changes").select("*").gte("slot_date", from).lte("slot_date", to),
+      db.from("external_lessons").select("*").gte("lesson_date", from).lte("lesson_date", to),
+    ]);
+    if (c.error) throw c.error;
+    if (e.error) throw e.error;
+    changeMap = {};
+    c.data.forEach((r) => (changeMap[`${r.class_no}_${r.slot_date}_${r.period}`] = r));
+    extMap = {};
+    e.data.forEach((r) => (extMap[`${r.class_no}_${r.lesson_date}_${r.period}`] = r));
+  }
+
+  async function reloadAll() {
+    await Promise.all([loadStatic(), loadWeek()]);
+    if (!settings) {
+      showWarning("설정이 없습니다. SQL 파일(schema.sql)을 Supabase SQL 편집기에서 먼저 실행해 주세요.");
+      return;
+    }
+    renderHeader();
+    renderTimetable();
+    if (currentTab === "external") { renderSeries(); updatePreview(); }
+    if (currentTab === "settings") renderHolidayList();
+  }
+
+  function showWarning(html) { const w = $("setupWarning"); w.innerHTML = html; w.style.display = "block"; }
+
+  // ---------------- 칸 하나의 상태 계산 ----------------
+  function baseContentFor(c, ds, p) {
+    const tr = termRange();
+    const inTerm = tr && ds >= tr.from && ds <= tr.to;
+    const b = inTerm ? baseMap[`${c}_${isoDow(parseDate(ds))}_${p}`] : null;
+    return b ? { subject: b.subject, room: b.room || null } : { subject: null, room: null };
+  }
+
+  function slotInfo(c, ds, p) {
+    const wd = isoDow(parseDate(ds));
+    if (wd > 5 || p > maxPeriod(wd)) return { type: "na" };
+    if (holidays[ds]) return { type: "holiday", name: holidays[ds].name };
+    const base = baseContentFor(c, ds, p);
+    const ch = changeMap[`${c}_${ds}_${p}`] || null;
+    const content = ch ? { subject: ch.subject || null, room: ch.room || null } : base;
+    const ext = extMap[`${c}_${ds}_${p}`] || null;
+    return { type: ext ? "external" : ch ? "changed" : "base", base, content, change: ch, ext };
+  }
+
+  function cellView(info) {
+    if (info.type === "na") return { cls: "na", html: "" };
+    if (info.type === "holiday") return { cls: "hol", html: "" };
+    const room = (r) => (r ? `<div class="s-room">${esc(r)}</div>` : "");
+    if (info.type === "external") {
+      const orig = info.content.subject ? `<div class="s-orig">${esc(info.content.subject)}</div>` : "";
+      return { cls: "ext click", html: `<div class="s-main">${esc(info.ext.title)}</div>${room(info.ext.place)}${orig}` };
+    }
+    if (info.type === "changed") {
+      if (!info.content.subject) {
+        const orig = info.base.subject ? `<div class="s-orig">${esc(info.base.subject)}</div>` : "";
+        return { cls: "cleared click", html: `<div class="s-main">비움</div>${orig}` };
+      }
+      const orig = info.base.subject && info.base.subject !== info.content.subject
+        ? `<div class="s-orig">${esc(info.base.subject)}</div>` : "";
+      return { cls: "changed click", html: `<div class="s-main">${esc(info.content.subject)}</div>${room(info.content.room)}${orig}` };
+    }
+    if (!info.content.subject) return { cls: "click", html: "" };
+    return { cls: "click", html: `<div class="s-main">${esc(info.content.subject)}</div>${room(info.content.room)}` };
+  }
+
+  // ---------------- 화면 그리기 ----------------
+  function weekDates() { return DAY_NAMES.map((_, i) => fmt(addDays(weekStart, i))); }
+
+  function renderHeader() {
+    $("appTitle").textContent = `📚 ${settings.grade}학년 수업 조정`;
+    const cs = $("classSel");
+    const keep = selClass;
+    cs.innerHTML = "";
+    for (let c = 1; c <= classCount(); c++) cs.add(new Option(`${c}반`, c));
+    selClass = Math.min(keep, classCount());
+    cs.value = selClass;
+
+    const rs = $("roomSel");
+    rs.innerHTML = "";
+    rooms().forEach((r) => rs.add(new Option(r, r)));
+    if (!rooms().includes(selRoom)) selRoom = rooms()[0] || "";
+    rs.value = selRoom;
+
+    $("roomList").innerHTML = rooms().map((r) => `<option value="${esc(r)}">`).join("");
+    const subs = new Set([...BASIC_SUBJECTS, ...baseRows.map((r) => r.subject)]);
+    $("subjectList").innerHTML = [...subs].map((s) => `<option value="${esc(s)}">`).join("");
+  }
+
+  function renderTimetable() {
+    const dates = weekDates();
+    $("weekLabel").textContent = `${md(dates[0])} ~ ${md(dates[4])}`;
+    $("classSel").style.display = view === "class" ? "" : "none";
+    $("dayBtns").style.display = view === "day" ? "" : "none";
+    $("roomSel").style.display = view === "room" ? "" : "none";
+    $("ttHint").style.display = view === "room" ? "none" : "";
+
+    const sb = $("swapBanner");
+    if (swapFrom) {
+      sb.classList.add("show");
+      $("swapText").textContent =
+        `🔁 ${swapFrom.c}반 ${pretty(swapFrom.ds)} ${swapFrom.p}교시(${swapFrom.content.subject || "빈 칸"})와 바꿀 칸을 누르세요.`;
+    } else sb.classList.remove("show");
+
+    if (view === "class") renderClassView(dates);
+    else if (view === "day") renderDayView(dates);
+    else renderRoomView(dates);
+  }
+
+  function dayHeader(ds, i) {
+    const h = holidays[ds];
+    const cls = h ? "hol" : ds === todayStr() ? "today" : "";
+    return `<th class="${cls}">${DAY_NAMES[i]} ${md(ds)}${h ? `<span class="hname">${esc(h.name)}</span>` : ""}</th>`;
+  }
+
+  function isSwapSrc(c, ds, p) { return swapFrom && swapFrom.c === c && swapFrom.ds === ds && swapFrom.p === p; }
+
+  function renderClassView(dates) {
+    const c = selClass;
+    let html = `<tr><th class="pcol">교시</th>${dates.map(dayHeader).join("")}</tr>`;
+    for (let p = 1; p <= 6; p++) {
+      html += `<tr><th class="pcol">${p}</th>`;
+      dates.forEach((ds) => {
+        const v = cellView(slotInfo(c, ds, p));
+        const extra = isSwapSrc(c, ds, p) ? " swap-src" : "";
+        html += `<td class="${v.cls}${extra}" data-c="${c}" data-d="${ds}" data-p="${p}">${v.html}</td>`;
+      });
+      html += "</tr>";
+    }
+    $("tt").innerHTML = html;
+  }
+
+  function renderDayView(dates) {
+    const btns = $("dayBtns");
+    btns.innerHTML = "";
+    dates.forEach((ds, i) => {
+      const b = document.createElement("button");
+      b.textContent = `${DAY_NAMES[i]} ${md(ds)}`;
+      if (holidays[ds]) b.classList.add("hol");
+      if (selDay === i + 1) b.classList.add("active");
+      b.addEventListener("click", () => { selDay = i + 1; renderTimetable(); });
+      btns.appendChild(b);
+    });
+    const ds = dates[selDay - 1];
+    if (holidays[ds]) {
+      $("tt").innerHTML = `<tr><td class="hol" style="height:120px">🎌 ${esc(holidays[ds].name)} — 수업이 없는 날입니다.</td></tr>`;
+      return;
+    }
+    const maxP = maxPeriod(selDay);
+    let html = `<tr><th class="pcol">반</th>`;
+    for (let p = 1; p <= maxP; p++) html += `<th>${p}교시</th>`;
+    html += "</tr>";
+    for (let c = 1; c <= classCount(); c++) {
+      html += `<tr><th class="pcol">${c}반</th>`;
+      for (let p = 1; p <= maxP; p++) {
+        const v = cellView(slotInfo(c, ds, p));
+        const extra = isSwapSrc(c, ds, p) ? " swap-src" : "";
+        html += `<td class="${v.cls}${extra}" data-c="${c}" data-d="${ds}" data-p="${p}">${v.html}</td>`;
+      }
+      html += "</tr>";
+    }
+    $("tt").innerHTML = html;
+  }
+
+  function renderRoomView(dates) {
+    if (!selRoom) { $("tt").innerHTML = `<tr><td class="empty">설정에서 특별실을 먼저 추가해 주세요.</td></tr>`; return; }
+    let html = `<tr><th class="pcol">교시</th>${dates.map(dayHeader).join("")}</tr>`;
+    for (let p = 1; p <= 6; p++) {
+      html += `<tr><th class="pcol">${p}</th>`;
+      dates.forEach((ds) => {
+        const wd = isoDow(parseDate(ds));
+        if (p > maxPeriod(wd)) { html += `<td class="na"></td>`; return; }
+        if (holidays[ds]) { html += `<td class="hol"></td>`; return; }
+        const chips = [];
+        for (let c = 1; c <= classCount(); c++) {
+          const info = slotInfo(c, ds, p);
+          if (info.type === "external") {
+            if (info.ext.place === selRoom) chips.push(`<span class="chip ext">${c}반 ${esc(info.ext.title)}</span>`);
+          } else if (info.content && info.content.subject && info.content.room === selRoom) {
+            chips.push(`<span class="chip">${c}반 ${esc(info.content.subject)}</span>`);
+          }
+        }
+        html += `<td class="${chips.length > 1 ? "conflict" : ""}">${chips.join("")}</td>`;
+      });
+      html += "</tr>";
+    }
+    $("tt").innerHTML = html;
+  }
+
+  // ---------------- 칸 누르기 ----------------
+  function onCellClick(c, ds, p) {
+    const info = slotInfo(c, ds, p);
+    if (info.type === "na") return;
+    if (info.type === "holiday") { toast(`${info.name} — 수업이 없는 날이에요.`); return; }
+    if (swapFrom) { doSwap(c, ds, p, info); return; }
+    if (info.type === "external") openExternalModal(c, ds, p, info);
+    else openSlotModal(c, ds, p, info);
+  }
+
+  function roomOptions(selected) {
+    let html = `<option value="">교실</option>`;
+    rooms().forEach((r) => (html += `<option value="${esc(r)}"${r === selected ? " selected" : ""}>${esc(r)}</option>`));
+    if (selected && !rooms().includes(selected)) html += `<option value="${esc(selected)}" selected>${esc(selected)}</option>`;
+    return html;
+  }
+
+  function openSlotModal(c, ds, p, info) {
+    const baseTxt = info.base.subject ? `${info.base.subject}${info.base.room ? ` (${info.base.room})` : ""}` : "없음";
+    const body = `
+      <div class="info">매주 시간표: <b>${esc(baseTxt)}</b>${info.change ? `<br>이번 주 변경: <b>${esc(info.content.subject || "비움")}</b>` : ""}</div>
+      <label for="mSubject">이번 주 교과</label>
+      <input id="mSubject" list="subjectList" value="${esc(info.content.subject)}" placeholder="교과 이름">
+      <label for="mRoom">장소</label>
+      <select id="mRoom">${roomOptions(info.content.room)}</select>
+      <label for="mNote">메모 (선택)</label>
+      <input id="mNote" maxlength="60" value="${esc(info.change && info.change.note)}" placeholder="예: 3교시와 바꿈">`;
+    const actions = [
+      { label: "💾 이번 주만 이렇게 저장", cls: "btn-primary", onClick: () => run(async () => {
+          const subject = $("mSubject").value.trim() || null;
+          const room = subject ? $("mRoom").value || null : null;
+          await saveSlot(c, ds, p, { subject, room }, $("mNote").value.trim());
+          closeModal(); toast("저장했어요.", "ok"); await reloadAll();
+        }) },
+      { label: "🔁 다른 칸과 순서 바꾸기", cls: "btn-ghost", onClick: () => {
+          swapFrom = { c, ds, p, content: { ...info.content } };
+          closeModal(); renderTimetable();
+        } },
+      { label: "🚌 이 시간에 외부 수업 넣기", cls: "btn-ok", onClick: () => { closeModal(); prefillExternal(c, ds, p); } },
+    ];
+    if (info.content.subject) {
+      actions.push({ label: "🧹 이번 주 교과 비우기", cls: "btn-gray", onClick: () => run(async () => {
+          await saveSlot(c, ds, p, { subject: null, room: null }, $("mNote").value.trim() || "교과 비움");
+          closeModal(); toast("이번 주 교과를 비웠어요.", "ok"); await reloadAll();
+        }) });
+    }
+    if (info.change) {
+      actions.push({ label: "↩️ 매주 시간표대로 되돌리기", cls: "btn-gray", onClick: () => run(async () => {
+          const { error } = await db.from("slot_changes").delete().eq("id", info.change.id);
+          if (error) throw error;
+          closeModal(); toast("원래대로 되돌렸어요.", "ok"); await reloadAll();
+        }) });
+    }
+    actions.push({ label: "닫기" });
+    openModal(`${c}반 · ${pretty(ds)} ${p}교시`, body, actions, true);
+  }
+
+  function openExternalModal(c, ds, p, info) {
+    const e = info.ext;
+    const body = `
+      <div class="info">
+        <b>${esc(e.title)}</b><br>
+        장소: ${esc(e.place || "-")}<br>
+        비고: ${esc(e.note || "-")}<br>
+        원래 교과: ${esc(info.content.subject || "없음")}
+      </div>
+      <p class="mtext">외부 수업을 지우면 원래 교과가 다시 보입니다.</p>`;
+    openModal(`${c}반 · ${pretty(ds)} ${p}교시`, body, [
+      { label: "이 칸만 삭제", cls: "btn-danger", onClick: () => run(async () => {
+          const { error } = await db.from("external_lessons").delete().eq("id", e.id);
+          if (error) throw error;
+          closeModal(); toast("삭제했어요.", "ok"); await reloadAll();
+        }) },
+      { label: "함께 등록한 일정 모두 삭제", cls: "btn-danger-solid", onClick: () => {
+          closeModal();
+          deleteSeries(e.series_id, e.title);
+        } },
+      { label: "닫기" },
+    ], true);
+  }
+
+  // 날짜별 변경 저장: 매주 시간표와 같아지면 변경 기록을 지웁니다
+  async function saveSlot(c, ds, p, content, note) {
+    const b = baseContentFor(c, ds, p);
+    const same = (content.subject || null) === (b.subject || null) && (content.room || null) === (b.room || null) && !note;
+    let res;
+    if (same) {
+      res = await db.from("slot_changes").delete().eq("class_no", c).eq("slot_date", ds).eq("period", p);
+    } else {
+      res = await db.from("slot_changes").upsert(
+        { class_no: c, slot_date: ds, period: p, subject: content.subject || null, room: content.room || null, note: note || null },
+        { onConflict: "class_no,slot_date,period" });
+    }
+    if (res.error) throw res.error;
+  }
+
+  async function doSwap(c, ds, p, info) {
+    const from = swapFrom;
+    if (from.c === c && from.ds === ds && from.p === p) { swapFrom = null; renderTimetable(); return; }
+    if (from.c !== c) { toast("같은 반 안에서만 순서를 바꿀 수 있어요.", "error"); return; }
+    if (info.type === "external") { toast("외부 수업 칸과는 바꿀 수 없어요. 다른 칸을 골라 주세요.", "error"); return; }
+    await run(async () => {
+      const target = { ...info.content };
+      await saveSlot(from.c, from.ds, from.p, target, null);
+      await saveSlot(c, ds, p, from.content, null);
+      swapFrom = null;
+      toast(`${pretty(from.ds)} ${from.p}교시 ↔ ${pretty(ds)} ${p}교시 바꿨어요.`, "ok");
+      await reloadAll();
+    });
+  }
+
+  // ---------------- 외부 수업 등록 ----------------
+  function renderExternalChecks() {
+    const box = $("eClasses");
+    const checked = new Set([...box.querySelectorAll("input:checked")].map((i) => Number(i.value)));
+    let html = `<label><input type="checkbox" id="eAll"> 전체</label>`;
+    for (let c = 1; c <= classCount(); c++) {
+      html += `<label><input type="checkbox" class="eCls" value="${c}"${checked.has(c) ? " checked" : ""}> ${c}반</label>`;
+    }
+    box.innerHTML = html;
+    $("eAll").addEventListener("change", (e) => {
+      box.querySelectorAll(".eCls").forEach((i) => (i.checked = e.target.checked));
+      updatePreview();
+    });
+    box.querySelectorAll(".eCls").forEach((i) => i.addEventListener("change", updatePreview));
+    updatePeriodChecks();
+  }
+
+  function updatePeriodChecks() {
+    const box = $("ePeriods");
+    const checked = new Set([...box.querySelectorAll("input:checked")].map((i) => Number(i.value)));
+    const ds = $("eDate").value;
+    const wd = ds ? isoDow(parseDate(ds)) : 4;
+    let html = "";
+    for (let p = 1; p <= 6; p++) {
+      const off = p > maxPeriod(wd);
+      html += `<label class="${off ? "disabled" : ""}"><input type="checkbox" class="ePer" value="${p}"${off ? " disabled" : checked.has(p) ? " checked" : ""}> ${p}교시</label>`;
+    }
+    box.innerHTML = html;
+    box.querySelectorAll(".ePer").forEach((i) => i.addEventListener("change", updatePreview));
+    updatePreview();
+  }
+
+  function readExternalForm() {
+    const classes = [...document.querySelectorAll(".eCls:checked")].map((i) => Number(i.value));
+    const periods = [...document.querySelectorAll(".ePer:checked")].map((i) => Number(i.value));
+    const start = $("eDate").value;
+    const weekly = document.querySelector('input[name="eRepeat"]:checked').value === "weekly";
+    const weeks = weekly ? Math.max(2, Math.min(40, Number($("eWeeks").value) || 2)) : 1;
+    const skipHol = $("eSkipHol").checked;
+    const dates = [], skipped = [];
+    if (start) {
+      for (let k = 0; k < weeks; k++) {
+        const ds = fmt(addDays(parseDate(start), 7 * k));
+        if (skipHol && holidays[ds]) skipped.push(ds); else dates.push(ds);
+      }
+    }
+    return { classes, periods, start, dates, skipped, weekly };
+  }
+
+  function updatePreview() {
+    const f = readExternalForm();
+    const pv = $("ePreview");
+    if (!f.start) { pv.innerHTML = "날짜를 고르면 등록될 일정이 여기에 보여요."; return; }
+    const wd = isoDow(parseDate(f.start));
+    if (wd > 5) { pv.innerHTML = `<span class="warn">주말은 등록할 수 없어요.</span>`; return; }
+    let html = `<b>날짜</b>: ${f.dates.map(pretty).join(", ") || "-"}`;
+    if (f.skipped.length) html += `<br><span class="warn">건너뜀(공휴일): ${f.skipped.map((d) => `${pretty(d)} ${esc(holidays[d].name)}`).join(", ")}</span>`;
+    html += `<br><b>반</b>: ${f.classes.length ? f.classes.map((c) => c + "반").join(", ") : "-"}`;
+    html += ` · <b>교시</b>: ${f.periods.length ? f.periods.join(", ") + "교시" : "-"}`;
+    html += `<br>총 <b>${f.dates.length * f.classes.length * f.periods.length}</b>칸이 외부 수업으로 바뀝니다.`;
+    pv.innerHTML = html;
+  }
+
+  async function submitExternal(e) {
+    e.preventDefault();
+    const title = $("eTitle").value.trim();
+    const f = readExternalForm();
+    if (!title) return toast("수업 이름을 써 주세요.", "error");
+    if (!f.classes.length) return toast("반을 하나 이상 골라 주세요.", "error");
+    if (!f.start) return toast("날짜를 골라 주세요.", "error");
+    if (isoDow(parseDate(f.start)) > 5) return toast("주말은 등록할 수 없어요.", "error");
+    if (!f.periods.length) return toast("교시를 하나 이상 골라 주세요.", "error");
+    if (!f.dates.length) return toast("등록할 날짜가 없어요. (모두 공휴일)", "error");
+
+    const series_id = uuid();
+    const place = $("ePlace").value.trim() || null;
+    const note = $("eNote").value.trim() || null;
+    const rows = [];
+    f.dates.forEach((ds) => f.classes.forEach((c) => f.periods.forEach((p) =>
+      rows.push({ series_id, class_no: c, lesson_date: ds, period: p, title, place, note }))));
+
+    const btn = $("eSubmit");
+    btn.disabled = true; btn.textContent = "저장 중…";
+    const { error } = await db.from("external_lessons").insert(rows);
+    btn.disabled = false; btn.textContent = "외부 수업 등록";
+
+    if (error) {
+      if (error.code === "23505") toast("이미 외부 수업이 등록된 시간이 있습니다. 시간표를 확인해 주세요.", "error");
+      else toast("저장하지 못했어요: " + error.message, "error");
+      await run(reloadAll);
+      return;
+    }
+    toast(`외부 수업 ${rows.length}칸을 등록했어요.`, "ok");
+    $("eTitle").value = ""; $("ePlace").value = ""; $("eNote").value = "";
+    weekStart = mondayOf(parseDate(f.dates[0]));
+    selClass = f.classes[0];
+    await run(reloadAll);
+    renderSeries();
+  }
+
+  function prefillExternal(c, ds, p) {
+    showTab("external");
+    $("eDate").value = ds;
+    document.querySelectorAll(".eCls").forEach((i) => (i.checked = Number(i.value) === c));
+    updatePeriodChecks();
+    document.querySelectorAll(".ePer").forEach((i) => (i.checked = Number(i.value) === p));
+    updatePreview();
+    $("eTitle").focus();
+  }
+
+  async function renderSeries() {
+    const box = $("seriesList");
+    const { data, error } = await db.from("external_lessons").select("*")
+      .gte("lesson_date", todayStr()).order("lesson_date").order("period").limit(3000);
+    if (error) { box.innerHTML = ""; toast("목록을 불러오지 못했어요: " + error.message, "error"); return; }
+    if (!data.length) { box.innerHTML = `<div class="empty">예정된 외부 수업이 없어요.</div>`; return; }
+    const groups = new Map();
+    data.forEach((r) => {
+      if (!groups.has(r.series_id)) groups.set(r.series_id, { ...r, classes: new Set(), dates: new Set(), periods: new Set() });
+      const g = groups.get(r.series_id);
+      g.classes.add(r.class_no); g.dates.add(r.lesson_date); g.periods.add(r.period);
+    });
+    box.innerHTML = "";
+    [...groups.values()].forEach((g) => {
+      const row = document.createElement("div");
+      row.className = "series";
+      const classes = [...g.classes].sort((a, b) => a - b).map((c) => c + "반").join(", ");
+      const periods = [...g.periods].sort((a, b) => a - b).join(", ");
+      row.innerHTML = `
+        <div>
+          <div class="series-title">${esc(g.title)}</div>
+          <div class="series-sub">${esc(classes)} · ${esc(periods)}교시${g.place ? " · 📍" + esc(g.place) : ""}${g.note ? " · " + esc(g.note) : ""}</div>
+          <div class="dates">${[...g.dates].map((d) => `<span class="chip ext">${pretty(d)}</span>`).join("")}</div>
+        </div>`;
+      const del = document.createElement("button");
+      del.className = "btn-danger";
+      del.textContent = "삭제";
+      del.addEventListener("click", () => deleteSeries(g.series_id, g.title));
+      row.appendChild(del);
+      box.appendChild(row);
+    });
+  }
+
+  function deleteSeries(seriesId, title) {
+    confirmBox("외부 수업을 삭제할까요?", `'${title}'\n함께 등록한 모든 날짜·반·교시가 삭제됩니다.\n(지난 날짜 기록도 함께 지워집니다)`, "모두 삭제", async () => {
+      const { data, error } = await db.from("external_lessons").delete().eq("series_id", seriesId).select("id");
+      if (error) throw error;
+      toast(`${data.length}칸을 삭제했어요.`, "ok");
+      await reloadAll();
+      renderSeries();
+    });
+  }
+
+  // ---------------- 설정 ----------------
+  function fillSettingsForm() {
+    $("sGrade").innerHTML = [1, 2, 3, 4, 5, 6].map((g) => `<option value="${g}">${g}학년</option>`).join("");
+    $("sGrade").value = settings.grade;
+    $("sClassCount").value = settings.class_count;
+    $("sStart").value = settings.term_start;
+    $("sEnd").value = settings.term_end;
+    $("sRooms").value = rooms().join(", ");
+    const bc = $("bClass");
+    const keep = Number(bc.value) || selClass;
+    bc.innerHTML = "";
+    for (let c = 1; c <= classCount(); c++) bc.add(new Option(`${c}반`, c));
+    bc.value = Math.min(keep, classCount());
+    renderBaseEditor();
+    renderHolidayList();
+  }
+
+  async function saveSettings() {
+    const grade = Number($("sGrade").value);
+    const class_count = Number($("sClassCount").value);
+    const term_start = $("sStart").value, term_end = $("sEnd").value;
+    const roomsArr = $("sRooms").value.split(",").map((s) => s.trim()).filter(Boolean);
+    if (!class_count || class_count < 1 || class_count > 20) return toast("반 수는 1~20 사이로 써 주세요.", "error");
+    if (!term_start || !term_end) return toast("시작 주와 마지막 주를 골라 주세요.", "error");
+    if (term_end < term_start) return toast("마지막 주가 시작 주보다 앞서요.", "error");
+    await run(async () => {
+      const { error } = await db.from("app_settings")
+        .update({ grade, class_count, term_start, term_end, rooms: roomsArr, updated_at: new Date().toISOString() }).eq("id", 1);
+      if (error) throw error;
+      toast("기본 설정을 저장했어요.", "ok");
+      await reloadAll();
+      fillSettingsForm();
+      renderExternalChecks();
+    });
+  }
+
+  function renderBaseEditor() {
+    const c = Number($("bClass").value) || 1;
+    let html = `<tr><th class="pcol">교시</th>${DAY_NAMES.map((d) => `<th>${d}</th>`).join("")}</tr>`;
+    for (let p = 1; p <= 6; p++) {
+      html += `<tr><th class="pcol">${p}</th>`;
+      for (let wd = 1; wd <= 5; wd++) {
+        if (p > maxPeriod(wd)) { html += `<td class="na"></td>`; continue; }
+        const r = baseMap[`${c}_${wd}_${p}`];
+        html += `<td><input class="b-sub" data-wd="${wd}" data-p="${p}" list="subjectList" value="${esc(r && r.subject)}" placeholder="교과">
+          <select class="b-room" data-wd="${wd}" data-p="${p}">${roomOptions(r && r.room)}</select></td>`;
+      }
+      html += "</tr>";
+    }
+    $("baseGrid").innerHTML = html;
+  }
+
+  async function saveBase() {
+    const c = Number($("bClass").value);
+    const upserts = [], dels = [];
+    document.querySelectorAll("#baseGrid .b-sub").forEach((inp) => {
+      const wd = Number(inp.dataset.wd), p = Number(inp.dataset.p);
+      const subject = inp.value.trim();
+      const room = document.querySelector(`#baseGrid .b-room[data-wd="${wd}"][data-p="${p}"]`).value || null;
+      const old = baseMap[`${c}_${wd}_${p}`];
+      if (subject) upserts.push({ class_no: c, weekday: wd, period: p, subject, room });
+      else if (old) dels.push(old.id);
+    });
+    await run(async () => {
+      if (upserts.length) {
+        const { error } = await db.from("base_timetable").upsert(upserts, { onConflict: "class_no,weekday,period" });
+        if (error) throw error;
+      }
+      if (dels.length) {
+        const { error } = await db.from("base_timetable").delete().in("id", dels);
+        if (error) throw error;
+      }
+      toast(`${c}반 매주 시간표를 저장했어요.`, "ok");
+      await reloadAll();
+      renderBaseEditor();
+    });
+  }
+
+  function renderHolidayList() {
+    const box = $("holList");
+    const tr = termRange();
+    const list = tr ? holidayList.filter((h) => h.holiday_date >= tr.from && h.holiday_date <= tr.to) : holidayList;
+    if (!list.length) { box.innerHTML = `<div class="empty">설정한 기간에 공휴일이 없어요.</div>`; return; }
+    box.innerHTML = "";
+    list.forEach((h) => {
+      const row = document.createElement("div");
+      row.className = "hol-item";
+      row.innerHTML = `<span>${pretty(h.holiday_date)} · ${esc(h.name)}${h.is_school ? '<span class="school">학교 지정</span>' : ""}</span>`;
+      const del = document.createElement("button");
+      del.className = "btn-danger";
+      del.textContent = "삭제";
+      del.addEventListener("click", () => confirmBox("휴일을 삭제할까요?", `${pretty(h.holiday_date)} ${h.name}`, "삭제", async () => {
+        const { error } = await db.from("holidays").delete().eq("holiday_date", h.holiday_date);
+        if (error) throw error;
+        toast("삭제했어요.", "ok");
+        await reloadAll();
+      }));
+      row.appendChild(del);
+      box.appendChild(row);
+    });
+  }
+
+  async function addHoliday() {
+    const ds = $("hDate").value, name = $("hName").value.trim();
+    if (!ds || !name) return toast("날짜와 이름을 써 주세요.", "error");
+    await run(async () => {
+      const { error } = await db.from("holidays").insert({ holiday_date: ds, name, is_school: true });
+      if (error) {
+        if (error.code === "23505") { toast("이미 휴일로 등록된 날짜예요.", "error"); return; }
+        throw error;
+      }
+      $("hDate").value = ""; $("hName").value = "";
+      toast("휴일을 추가했어요.", "ok");
+      await reloadAll();
+    });
+  }
+
+  // ---------------- 탭 ----------------
+  let currentTab = "timetable";
+  function showTab(name) {
+    currentTab = name;
+    document.querySelectorAll("nav.tabs button").forEach((b) => b.classList.toggle("active", b.dataset.tab === name));
+    document.querySelectorAll(".tab").forEach((t) => t.classList.toggle("active", t.id === "tab-" + name));
+    if (!settings) return;
+    if (name === "external") { renderExternalChecks(); renderSeries(); }
+    if (name === "settings") fillSettingsForm();
+  }
+
+  // ---------------- 실시간 ----------------
+  let reloadTimer = null;
+  function subscribeRealtime() {
+    const onChange = () => {
+      clearTimeout(reloadTimer);
+      reloadTimer = setTimeout(() => run(reloadAll), 400);
+    };
+    let ch = db.channel("grade-schedule");
+    ["app_settings", "base_timetable", "slot_changes", "external_lessons", "holidays"].forEach((t) => {
+      ch = ch.on("postgres_changes", { event: "*", schema: "public", table: t }, onChange);
+    });
+    ch.subscribe((status) => {
+      const el = $("live");
+      if (status === "SUBSCRIBED") { el.textContent = "실시간 공유 중"; el.classList.add("on"); }
+      else { el.textContent = "실시간 연결 끊김"; el.classList.remove("on"); }
+    });
+  }
+
+  // ---------------- 시작 ----------------
+  async function init() {
+    const now = new Date();
+    const wd = isoDow(now);
+    weekStart = mondayOf(wd > 5 ? addDays(now, 7) : now);   // 주말에는 다음 주를 보여 줌
+    selDay = wd > 5 ? 1 : wd;
+    $("eDate").value = fmt(wd > 5 ? weekStart : now);
+
+    if (!SUPABASE_URL || !SUPABASE_KEY) {
+      showWarning("⚠️ 스크립트 맨 위의 <b>SUPABASE_URL</b>과 <b>SUPABASE_KEY</b>에 값을 붙여 넣어 주세요.");
+      $("live").textContent = "연결 안 됨";
+      return;
+    }
+    db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+    // 이벤트 연결
+    document.querySelectorAll("nav.tabs button").forEach((b) => b.addEventListener("click", () => showTab(b.dataset.tab)));
+    document.querySelectorAll("#viewSeg button").forEach((b) => b.addEventListener("click", () => {
+      view = b.dataset.view;
+      document.querySelectorAll("#viewSeg button").forEach((x) => x.classList.toggle("active", x === b));
+      renderTimetable();
+    }));
+    $("classSel").addEventListener("change", (e) => { selClass = Number(e.target.value); renderTimetable(); });
+    $("roomSel").addEventListener("change", (e) => { selRoom = e.target.value; renderTimetable(); });
+    $("prevWeek").addEventListener("click", () => moveWeek(-7));
+    $("nextWeek").addEventListener("click", () => moveWeek(7));
+    $("thisWeek").addEventListener("click", () => { weekStart = mondayOf(new Date()); run(async () => { await loadWeek(); renderTimetable(); }); });
+    $("swapCancel").addEventListener("click", () => { swapFrom = null; renderTimetable(); });
+    $("tt").addEventListener("click", (e) => {
+      const td = e.target.closest("td[data-c]");
+      if (td) onCellClick(Number(td.dataset.c), td.dataset.d, Number(td.dataset.p));
+    });
+
+    $("extForm").addEventListener("submit", submitExternal);
+    $("eDate").addEventListener("change", updatePeriodChecks);
+    $("eWeeks").addEventListener("input", () => {
+      document.querySelector('input[name="eRepeat"][value="weekly"]').checked = true;
+      updatePreview();
+    });
+    document.querySelectorAll('input[name="eRepeat"]').forEach((r) => r.addEventListener("change", updatePreview));
+    $("eSkipHol").addEventListener("change", updatePreview);
+
+    $("saveSettings").addEventListener("click", saveSettings);
+    $("bClass").addEventListener("change", renderBaseEditor);
+    $("saveBase").addEventListener("click", saveBase);
+    $("addHoliday").addEventListener("click", addHoliday);
+
+    $("modalBg").addEventListener("click", (e) => { if (e.target.id === "modalBg") closeModal(); });
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") { closeModal(); if (swapFrom) { swapFrom = null; renderTimetable(); } }
+    });
+
+    await run(reloadAll);
+    subscribeRealtime();
+  }
+
+  function moveWeek(n) {
+    weekStart = addDays(weekStart, n);
+    run(async () => { await loadWeek(); renderTimetable(); });
+  }
+
+  init();
+</script>
+</body>
+</html>
